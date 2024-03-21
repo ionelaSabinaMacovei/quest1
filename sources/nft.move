@@ -157,8 +157,13 @@ module overmind::NonFungibleToken {
         @param ctx - the transaction context
     */
     fun init(ctx: &mut TxContext) {
-
+        let minter_cap = MinterCap {
+            id: UID::new(ctx),
+            sales: Balance::zero(),
+        };
+        move_to(ctx, minter_cap);
     }
+
 
     /* 
         Mints a new NFT and transfers it to the recipient. This can only be called by the owner of 
@@ -173,17 +178,29 @@ module overmind::NonFungibleToken {
         @param ctx - the transaction context
         @return the change coin
     */
-    public fun mint_nft(
-        recipient: address, 
-        nft_name: vector<u8>, 
-        nft_description: vector<u8>, 
-        nft_image: vector<u8>,
-        payment_coin: &mut Coin<SUI>,
-        minter_cap: &mut MinterCap,
-        ctx: &mut TxContext, 
-    ) {
-        
+public fun mint_nft(recipient: address, nft_name: vector<u8>, nft_description: vector<u8>, nft_image: vector<u8>, payment_coin: &mut Coin<SUI>, minter_cap: &mut MinterCap, ctx: &mut TxContext) {
+    let payment_amount = coin::value(payment_coin);
+    let mint_price = 1_000_000; // Assuming 1 SUI = 1,000,000 units for this example
+    if (payment_amount < mint_price) {
+        abort EInsufficientPayment;
     }
+
+    let change = payment_amount - mint_price;
+    balance::deposit(&mut minter_cap.sales, coin::withdraw(payment_coin, mint_price));
+
+    if (change > 0) {
+        let change_coin = coin::withdraw(payment_coin, change);
+        transfer::transfer(change_coin, recipient);
+    }
+
+    let nft = NonFungibleToken {
+        id: UID::new(ctx),
+        name: String::from_utf8(nft_name),
+        description: String::from_utf8(nft_description),
+        image: Url::new_unsafe_from_bytes(nft_image),
+    };
+    move_to(ctx, nft);
+}
 
     /* 
         Takes two NFTs and combines them into a new NFT. The two NFTs are deleted. This can only be
@@ -194,14 +211,17 @@ module overmind::NonFungibleToken {
         @param ctx - the transaction context
         @return the new NFT object
     */
-    public fun combine_nfts(
-        nft1: NonFungibleToken,
-        nft2: NonFungibleToken,
-        new_image_url: vector<u8>,
-        ctx: &mut TxContext,
-    ): NonFungibleToken {
-        
+public fun combine_nfts(nft1: NonFungibleToken, nft2: NonFungibleToken, new_image_url: vector<u8>, ctx: &mut TxContext): NonFungibleToken {
+    let new_name = nft1.name + " + " + nft2.name;
+    let new_description = "Combined NFT of " + nft1.description + " and " + nft2.description;
+    NonFungibleToken {
+        id: UID::new(ctx),
+        name: new_name,
+        description: new_description,
+        image: Url::new_unsafe_from_bytes(new_image_url),
     }
+}
+
 
     /* 
         Withdraws the sales balance from the MinterCap object. This can only be called by the owner 
@@ -210,47 +230,48 @@ module overmind::NonFungibleToken {
         @param ctx - the transaction context
         @return the withdrawn coin
     */
-    public fun withdraw_sales(
-        minter_cap: &mut MinterCap,
-        ctx: &mut TxContext,
-    ): Coin<SUI> {
-        
-    }
+public fun withdraw_sales(minter_cap: &mut MinterCap, ctx: &mut TxContext): Coin<SUI> {
+    let sales_amount = balance::value(&minter_cap.sales);
+    balance::withdraw_all(&mut minter_cap.sales)
+}
+
 
     /*
         Deletes the NFT object. This can only be called by the owner of the NFT object.
         @param nft - the NFT object
     */
-    public fun burn_nft(nft: NonFungibleToken) {
-        
-    }
+public fun burn_nft(nft: NonFungibleToken) {
+    // Assuming a function `delete_object` to delete the object from storage.
+    delete_object(nft.id);
+}
+
 
     /* 
         Gets the NFT's `name`
         @param nft - the NFT object
         @return the NFT's `name`
     */
-    public fun name(nft: &NonFungibleToken): String {
-
-    }
+public fun name(nft: &NonFungibleToken): String {
+    *&nft.name
+}
 
     /* 
         Gets the NFT's `description`
         @param nft - the NFT object
         @return the NFT's `description`
     */
-    public fun description(nft: &NonFungibleToken): String {
-
-    }
+public fun description(nft: &NonFungibleToken): String {
+    *&nft.description
+}
 
     /* 
         Gets the NFT's `image`
         @param nft - the NFT object
         @return the NFT's `image`
     */
-    public fun url(nft: &NonFungibleToken): Url {
-        
-    }
+public fun url(nft: &NonFungibleToken): Url {
+    nft.image.clone()
+}
 
     //==============================================================================================
     // Helper functions - Add your helper functions here (if any)
